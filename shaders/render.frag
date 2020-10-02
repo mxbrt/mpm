@@ -9,7 +9,14 @@ layout(set = 0, binding = 0, std140) uniform Globals {
     uint height;
 };
 
+layout(set = 0, binding = 1, std140) readonly buffer PixelBuffer {
+    vec4 img[];
+};
+
 void main() {
-    vec2 uv = (gl_FragCoord.xy + 0.5) / vec2(width,height);
-    outColor = vec4(uv, 0, 1.0);
+    int x = int(gl_FragCoord.x);
+    int y = int(gl_FragCoord.y);
+    vec4 p = img[int(gl_FragCoord.x) + int(gl_FragCoord.y) * width];
+    //vec2 uv = (gl_FragCoord.xy + 0.5) / vec2(width,height);
+    outColor = p;
 }

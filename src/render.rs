@@ -11,12 +11,15 @@ unsafe impl bytemuck::Zeroable for ShaderUniforms {}
 
 pub struct Renderer {
     uniform_buffer: wgpu::Buffer,
+    storage_buffer: wgpu::Buffer,
     render_pipeline: wgpu::RenderPipeline,
     bind_group: wgpu::BindGroup,
+    width: u32,
+    height: u32,
 }
 
 impl Renderer {
-    pub fn new(device: &mut wgpu::Device) -> Renderer {
+    pub fn new(device: &mut wgpu::Device, width: u32, height: u32) -> Renderer {
         let vs_module = shader::load("shaders/quad.vert", &device);
         let fs_module = shader::load("shaders/render.frag", &device);
         let uniform_buffer = device.create_buffer(&wgpu::BufferDescriptor {
@@ -26,16 +29,35 @@ impl Renderer {
             mapped_at_creation: false,
         });
 
+        let storage_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: None,
+            size: (std::mem::size_of::<[f32; 4]>() * width as usize * height as usize) as u64,
+            usage: wgpu::BufferUsage::STORAGE | wgpu::BufferUsage::COPY_DST,
+            mapped_at_creation: false,
+        });
+
         let bindgroup_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            entries: &[wgpu::BindGroupLayoutEntry {
-                binding: 0,
-                visibility: wgpu::ShaderStage::FRAGMENT,
-                ty: wgpu::BindingType::UniformBuffer {
-                    dynamic: false,
-                    min_binding_size: None,
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStage::FRAGMENT,
+                    ty: wgpu::BindingType::UniformBuffer {
+                        dynamic: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
                 },
-                count: None,
-            }],
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStage::FRAGMENT,
+                    ty: wgpu::BindingType::StorageBuffer {
+                        dynamic: false,
+                        min_binding_size: None,
+                        readonly: true,
+                    },
+                    count: None,
+                },
+            ],
             label: None,
         });
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -82,16 +104,25 @@ impl Renderer {
         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: None,
             layout: &bindgroup_layout,
-            entries: &[wgpu::BindGroupEntry {
-                binding: 0,
-                resource: wgpu::BindingResource::Buffer(uniform_buffer.slice(..)),
-            }],
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::Buffer(uniform_buffer.slice(..)),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Buffer(storage_buffer.slice(..)),
+                },
+            ],
         });
 
         Renderer {
             uniform_buffer,
+            storage_buffer,
             render_pipeline,
             bind_group,
+            width,
+            height,
         }
     }
 
@@ -99,15 +130,19 @@ impl Renderer {
         &'r mut self,
         queue: &wgpu::Queue,
         render_pass: &mut wgpu::RenderPass<'r>,
-        width: u32,
-        height: u32,
+        img: &Vec<f32>,
     ) {
-        let shader_uniforms = ShaderUniforms { width, height };
+        //assert!(img.len() == (self.width * self.height * 4) as usize);
+        let shader_uniforms = ShaderUniforms {
+            width: self.width,
+            height: self.height,
+        };
         queue.write_buffer(
             &self.uniform_buffer,
             0,
             bytemuck::bytes_of(&shader_uniforms),
         );
+        queue.write_buffer(&self.storage_buffer, 0, bytemuck::cast_slice(&img[..]));
         render_pass.set_pipeline(&self.render_pipeline);
         render_pass.set_bind_group(0, &self.bind_group, &[]);
         render_pass.draw(0..4, 0..1);

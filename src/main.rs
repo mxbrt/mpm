@@ -21,8 +21,9 @@ fn main() {
     // renderer initialization
     let mut width = render_context.swap_chain_descriptor.width;
     let mut height = render_context.swap_chain_descriptor.height;
+    let mut img = vec![1.0f32; (4 * width * height) as usize];
 
-    let mut renderer = render::Renderer::new(&mut window.device);
+    let mut renderer = render::Renderer::new(&mut window.device, width, height);
 
     event_loop.run(move |event, _, control_flow| {
         imgui
@@ -71,6 +72,8 @@ fn main() {
                 ..
             } => {
                 render_context = RenderContext::new(&window, size.width, size.height);
+                renderer = render::Renderer::new(&mut window.device, width, height);
+                img = vec![0.5f32; (4 * width * height) as usize];
                 width = size.width;
                 height = size.height;
             }
@@ -102,7 +105,8 @@ fn main() {
                         }],
                         depth_stencil_attachment: None,
                     });
-                    renderer.render(&window.queue, &mut render_pass, width, height);
+
+                    renderer.render(&window.queue, &mut render_pass, &img);
                     imgui.render(
                         &window.queue,
                         &window.device,
