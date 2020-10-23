@@ -132,7 +132,6 @@ impl Renderer {
         render_pass: &mut wgpu::RenderPass<'r>,
         img: &Vec<f32>,
     ) {
-        //assert!(img.len() == (self.width * self.height * 4) as usize);
         let shader_uniforms = ShaderUniforms {
             width: self.width,
             height: self.height,

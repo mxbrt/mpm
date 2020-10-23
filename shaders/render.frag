@@ -15,8 +15,7 @@ layout(set = 0, binding = 1, std140) readonly buffer PixelBuffer {
 
 void main() {
     int x = int(gl_FragCoord.x);
-    int y = int(gl_FragCoord.y);
-    vec4 p = img[int(gl_FragCoord.x) + int(gl_FragCoord.y) * width];
-    //vec2 uv = (gl_FragCoord.xy + 0.5) / vec2(width,height);
+    int y = int(height) - int(gl_FragCoord.y);
+    vec4 p = img[x + y * width];
     outColor = p;
 }

@@ -1,4 +1,4 @@
-use svo::{render, ui, voxel, window};
+use svo::{fluid, render, ui, window};
 
 use ui::ImguiContext;
 use window::{RenderContext, WindowContext};
@@ -21,6 +21,7 @@ fn main() {
     let mut img = vec![1.0f32; (4 * width * height) as usize];
 
     let mut renderer = render::Renderer::new(&mut window.device, width, height);
+    let mut fluidsim = fluid::Simulator::waterbox();
 
     event_loop.run(move |event, _, control_flow| {
         imgui
@@ -65,17 +66,20 @@ fn main() {
             }
 
             Event::WindowEvent {
-                event: WindowEvent::Resized(size),
+                event: WindowEvent::Resized(physical_size),
                 ..
             } => {
-                render_context = RenderContext::new(&window, size.width, size.height);
+                let logical_size = physical_size.to_logical(1.0);
+                width = logical_size.width;
+                height = logical_size.height;
+                render_context = RenderContext::new(&window, width, height);
                 renderer = render::Renderer::new(&mut window.device, width, height);
-                img = vec![0.5f32; (4 * width * height) as usize];
-                width = size.width;
-                height = size.height;
+                img = vec![0.0f32; (4 * width * height) as usize];
             }
             Event::MainEventsCleared => window.window.request_redraw(),
             Event::RedrawRequested(_) => {
+                fluidsim.step();
+                fluidsim.render(&mut img, width as usize, height as usize);
                 let mut encoder =
                     window
                         .device

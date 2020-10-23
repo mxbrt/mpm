@@ -7,6 +7,10 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+# linalg
+nalgebra = "0.22.1"
+nalgebra-glm = "0.9"
+
 # gpu
 futures = "0.3.5"
 wgpu = "0.6.0"
