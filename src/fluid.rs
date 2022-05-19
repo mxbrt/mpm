@@ -1,7 +1,6 @@
-// MLS-MPM fluid dynamics
-extern crate nalgebra as na;
-extern crate nalgebra_glm as glm;
+use glam::{vec2, Mat2, Vec2};
 
+// MLS-MPM fluid dynamics
 pub static GRID_RES: usize = 256;
 static NUM_CELLS: usize = GRID_RES * GRID_RES;
 
@@ -19,15 +18,15 @@ static EOS_POWER: f32 = 4.0;
 
 #[derive(Debug)]
 pub struct Particle {
-    pub pos: glm::Vec2,
-    pub vel: glm::Vec2,
-    c: glm::Mat2,
+    pub pos: Vec2,
+    pub vel: Vec2,
+    c: Mat2,
     mass: f32,
 }
 
 #[derive(Clone)]
 struct Cell {
-    vel: glm::Vec2,
+    vel: Vec2,
     mass: f32,
 }
 
@@ -37,19 +36,19 @@ pub struct Simulator {
 }
 
 impl Simulator {
-    pub fn new(particle_positions: &Vec<glm::Vec2>) -> Simulator {
+    pub fn new(particle_positions: &Vec<Vec2>) -> Simulator {
         let particles = particle_positions
             .iter()
             .map(|pos| Particle {
                 pos: pos.clone(),
-                vel: glm::Vec2::zeros(),
-                c: glm::Mat2::zeros(),
+                vel: Vec2::ZERO,
+                c: Mat2::ZERO,
                 mass: 1.0,
             })
             .collect();
         let grid = vec![
             Cell {
-                vel: glm::Vec2::zeros(),
+                vel: Vec2::ZERO,
                 mass: 0.0
             };
             NUM_CELLS
@@ -59,11 +58,11 @@ impl Simulator {
     }
 
     pub fn waterbox() -> Simulator {
-        let mut particles = Vec::<glm::Vec2>::new();
+        let mut particles = Vec::<Vec2>::new();
         let border = (GRID_RES as f32 * 0.2) as usize;
         for i in border..GRID_RES - border {
             for j in border..GRID_RES - border {
-                particles.push(glm::vec2(i as f32, j as f32));
+                particles.push(vec2(i as f32, j as f32));
             }
         }
         Simulator::new(&particles)
@@ -88,14 +87,14 @@ impl Simulator {
     fn clear_grid(&mut self) {
         for cell in &mut self.grid {
             cell.mass = 0.0;
-            cell.vel = glm::Vec2::zeros();
+            cell.vel = Vec2::ZERO;
         }
     }
 
     fn particles_to_grid_1(&mut self) {
-        let mut weights = [glm::Vec2::zeros(); 3];
+        let mut weights = [Vec2::ZERO; 3];
         for p in &self.particles {
-            let grid_pos = glm::floor(&p.pos);
+            let grid_pos = p.pos.floor();
             init_weights(&p, &grid_pos, &mut weights);
 
             for x in 0..3 {
@@ -115,9 +114,9 @@ impl Simulator {
     }
 
     fn particles_to_grid_2(&mut self) {
-        let mut weights = [glm::Vec2::zeros(); 3];
+        let mut weights = [Vec2::ZERO; 3];
         for p in &self.particles {
-            let grid_pos = glm::floor(&p.pos);
+            let grid_pos = p.pos.floor();
             init_weights(&p, &grid_pos, &mut weights);
 
             let mut density = 0.0;
@@ -134,9 +133,9 @@ impl Simulator {
             let pressure =
                 (EOS_STIFFNESS * (density / REST_DENSITY).powf(EOS_POWER) - 1.0).max(-0.1);
 
-            let mut stress = glm::mat2(-pressure, 0.0, 0.0, -pressure);
-            let trace = p.c.column(1).x + p.c.column(0).y;
-            let strain = glm::mat2(p.c.column(0).x, trace, trace, p.c.column(1).y);
+            let mut stress = Mat2::from_cols_array(&[-pressure, 0.0, 0.0, -pressure]);
+            let trace = p.c.col(1).x + p.c.col(0).y;
+            let strain = Mat2::from_cols_array(&[p.c.col(0).x, trace, trace, p.c.col(1).y]);
 
             let viscosity_term = DYNAMIC_VISCOSITY * strain;
             stress += viscosity_term;
@@ -159,7 +158,7 @@ impl Simulator {
             let cell = &mut self.grid[i];
             if cell.mass > 0.0 {
                 cell.vel /= cell.mass;
-                cell.vel += DT * glm::vec2(0.0, GRAVITY);
+                cell.vel += DT * vec2(0.0, GRAVITY);
 
                 // boundary conditions
                 let x = i / GRID_RES;
@@ -175,13 +174,13 @@ impl Simulator {
     }
 
     fn grid_to_particles(&mut self) {
-        let mut weights = [glm::Vec2::zeros(); 3];
+        let mut weights = [Vec2::ZERO; 3];
         for p in &mut self.particles {
-            p.vel = glm::Vec2::zeros();
-            let grid_pos = glm::floor(&p.pos);
+            p.vel = Vec2::ZERO;
+            let grid_pos = p.pos.floor();
             init_weights(&p, &grid_pos, &mut weights);
 
-            let mut b = glm::Mat2::zeros();
+            let mut b = Mat2::ZERO;
             for x in 0..3 {
                 for y in 0..3 {
                     let weight = weights[x].x * weights[y].y;
@@ -191,7 +190,7 @@ impl Simulator {
                     let velocity_term = {
                         let row0 = weighted_velocity * cell_dist.x;
                         let row1 = weighted_velocity * cell_dist.y;
-                        glm::mat2(row0.x, row0.y, row1.x, row1.y)
+                        Mat2::from_cols_array(&[row0.x, row0.y, row1.x, row1.y])
                     };
                     b += velocity_term;
                     p.vel += weighted_velocity;
@@ -200,8 +199,11 @@ impl Simulator {
 
             p.c = b * 4.0;
             p.pos += p.vel * DT;
-            p.pos = glm::clamp(&p.pos, 1.0, GRID_RES as f32 - 2.0);
 
+            let grid_boundary = GRID_RES as f32 - 2.0;
+            p.pos = p
+                .pos
+                .clamp(vec2(1.0, 1.0), vec2(grid_boundary, grid_boundary));
             let x_n = p.pos + p.vel;
             let wall_min = 3.0;
             let wall_max = GRID_RES as f32 - 4.0;
@@ -220,40 +222,34 @@ impl Simulator {
         }
     }
 
-    pub fn render(&self, img: &mut Vec<f32>, width: usize, height: usize) {
+    pub fn render(&self, img: &mut Vec<u8>, width: usize, height: usize) {
         for i in 0..img.len() {
-            img[i] = 0.0;
+            img[i] = 0;
         }
         for p in &self.particles {
             let pixel_x = (p.pos.x * (width as f32 / GRID_RES as f32)) as usize;
-            let pixel_y = (p.pos.y * (height as f32 / GRID_RES as f32)) as usize;
+            let pixel_y = height - (p.pos.y * (height as f32 / GRID_RES as f32)) as usize;
             let pixel_idx = (pixel_y * width + pixel_x) * 4;
-            img[pixel_idx] = p.mass;
-            img[pixel_idx + 1] = p.vel.x;
-            img[pixel_idx + 2] = p.vel.y;
-            img[pixel_idx + 3] = 1.0;
+            img[pixel_idx] = (p.mass * 255.0) as u8;
+            img[pixel_idx + 1] = (p.vel.x * 255.0) as u8;
+            img[pixel_idx + 2] = (p.vel.y * 255.0) as u8;
+            img[pixel_idx + 3] = 255;
         }
     }
 }
 
-fn init_weights(p: &Particle, grid_pos: &glm::Vec2, weights: &mut [glm::Vec2; 3]) {
-    let half = glm::vec2(0.5, 0.5);
-    let two = glm::vec2(2.0, 2.0);
-    let cell_diff = (p.pos - grid_pos) - half;
-    weights[0] = 0.5 * glm::pow(&(half - cell_diff), &two);
-    weights[1] = glm::vec2(0.75, 0.75) - glm::pow(&cell_diff, &two);
-    weights[2] = 0.5 * glm::pow(&(half + cell_diff), &two);
+fn init_weights(p: &Particle, grid_pos: &Vec2, weights: &mut [Vec2; 3]) {
+    let half = vec2(0.5, 0.5);
+    let cell_diff = (p.pos - *grid_pos) - half;
+    weights[0] = vec2(0.5, 0.5) * (half - cell_diff).powf(2.0);
+    weights[1] = vec2(0.75, 0.75) - cell_diff.powf(2.0);
+    weights[2] = vec2(0.5, 0.5) * (half + cell_diff).powf(2.0);
 }
 
-fn init_cell(
-    particle_pos: &glm::Vec2,
-    grid_pos: &glm::Vec2,
-    x: usize,
-    y: usize,
-) -> (glm::Vec2, usize) {
-    let half = glm::vec2(0.5, 0.5);
-    let cell_pos = glm::vec2(grid_pos.x + x as f32 - 1.0, grid_pos.y + y as f32 - 1.0);
-    let cell_dist = (cell_pos - particle_pos) + half;
+fn init_cell(particle_pos: &Vec2, grid_pos: &Vec2, x: usize, y: usize) -> (Vec2, usize) {
+    let half = vec2(0.5, 0.5);
+    let cell_pos = vec2(grid_pos.x + x as f32 - 1.0, grid_pos.y + y as f32 - 1.0);
+    let cell_dist = (cell_pos - *particle_pos) + half;
     let cell_idx = (grid_pos.x as usize + x - 1) * GRID_RES + (grid_pos.y as usize + y - 1);
     (cell_dist, cell_idx)
 }
